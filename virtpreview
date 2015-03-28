@@ -1,0 +1,677 @@
+#!/usr/bin/python
+
+import optparse
+import os
+import pickle
+import re
+import shlex
+import StringIO
+import subprocess
+import sys
+import time
+import traceback
+
+
+# Fedora versions we target
+#   To add a new version here, do virtpreview --new-version <version-number>
+#   and it will create the necessary directory tree
+#
+# When you tweak this, you should send a mail to virt@fedora
+fedora_versions = [21, 22]
+rawhide_ver = fedora_versions[-1] + 1
+
+# Skip building this fedora version for now, useful after new fedora is
+# branched but before it is composed
+skip_for_now = []
+
+
+hosteduser = "crobinso"
+
+# If a package is in this list, build it in the order it's listed, but
+# only AFTER every package that _isn't_ in this list. So we can stick
+# qemu at the end which generally deps on everything else
+staticbuildorder = [
+    "edk2",
+    "ipxe",
+    "usbredir",
+    "spice-protocol",
+    "spice-gtk",
+    "spice",
+    "vinagre",
+    "qemu",
+    "libvirt",
+    "libvirt-python",
+    "libvirt-sandbox",
+    "libosinfo",
+    "gnome-boxes",
+    "virt-manager",
+    "virt-viewer",
+]
+
+
+# List of packages which we rebuild the fedora_version version of to
+# distribute. Example when this was needed:
+#   qemu 1.2 needed new usbredir which bumped the spice-gtk soname.
+#   we need to rebuild gnome-boxes against new spice-gtk. but pulling in
+#   the rawhide version basically pulled in the GTK world. So rebuild the
+#   F17 boxes against new spice-gtk
+rebuild_target_ver = [
+]
+
+
+# Temporarilly skip updating these git repos, to not pull in latest version.
+# Give yourself a reminder to re-enable it at some point!
+temp_skip_update = [
+]
+
+# Temporarilly skip building these repos. Can be used if there's a
+# a temporary build issue or similar.
+temp_skip_build = []
+
+# This is the default list of packages we distribute with every
+# virt-preview version. More repos can be added as a one off by doing
+# 'fedpkg co' in the relevant repos/ directory.
+default_packages = [
+    "ipxe",
+    "libvirt",
+    "libvirt-python",
+    "libvirt-sandbox",
+    "openbios",
+    "qemu",
+    "seabios",
+    "sgabios",
+    "SLOF",
+    "virt-manager",
+]
+
+
+###################
+# Utility helpers #
+###################
+
+def format_tb():
+    tb = "".join(traceback.format_exc()).strip()
+    if tb == "None":
+        return None
+    return tb
+
+
+def fail(msg):
+    print >> sys.stderr, "ERROR: %s" % msg
+
+    tb = format_tb()
+    if tb:
+        print >> sys.stderr, tb
+
+    sys.exit(1)
+
+
+def delay(msg, secs):
+    for sec in range(secs):
+        newstr = "\r%s(%s of %s)" % (msg, sec + 1, secs)
+        sys.stdout.write(newstr)
+        sys.stdout.flush()
+        time.sleep(1)
+
+
+def _comm(comm, systemcompat, quiet=False, exc=False, **kwargs):
+    try:
+        if not quiet:
+            print "+ %s" % comm
+
+        output = ""
+        read = False
+        if systemcompat:
+            kwargs["shell"] = True
+            if isinstance(sys.stdout, StringIO.StringIO):
+                read = True
+        else:
+            read = True
+            if not isinstance(comm, list):
+                comm = shlex.split(comm)
+
+        if read:
+            kwargs["stdout"] = subprocess.PIPE
+            kwargs["stderr"] = subprocess.STDOUT
+
+        proc = subprocess.Popen(comm, **kwargs)
+        try:
+            output, ignore = proc.communicate()
+            sts = proc.wait()
+
+            if output is not None:
+                output = output.strip()
+        except (KeyboardInterrupt, SystemExit):
+            os.system("stty echo")
+            raise
+
+        if read and systemcompat:
+            output = output.strip()
+            sys.stdout.write(output)
+
+        if sts != 0:
+            errmsg = ("Command failed:\ncmd=%s\ncode=%s\nout=\n%s" %
+                      (comm, sts, output))
+            if exc:
+                raise RuntimeError(errmsg)
+            fail(errmsg)
+
+        return output, sts
+    except Exception, e:
+        if exc:
+            raise
+        fail("Command failed:\n%s\n%s" % (comm, str(e)))
+
+
+def shellcomm(comm, **kwargs):
+    return _comm(comm, True, **kwargs)[1]
+
+
+def runcomm(comm, **kwargs):
+    return _comm(comm, False, **kwargs)[0]
+
+
+####################
+# Helper functions #
+####################
+
+def rootdir(version):
+    return os.path.join(os.path.expanduser("~/src/fedora/virtpreview"),
+                        str(version))
+
+
+def check_verrel(repo, fedora_version):
+    repodir = "repos/" + repo
+    rebuild_target = repo in rebuild_target_ver
+    if rebuild_target:
+        branch = "f%s"
+    elif (fedora_version + 1) == rawhide_ver:
+        branch = "master"
+    else:
+        branch = "f%s" % (fedora_version + 1)
+
+    runcomm("bash -c 'cd %s && git reset --hard'" % repodir, exc=True)
+    runcomm("bash -c 'cd %s && fedpkg switch-branch %s'" %
+                 (repodir, branch), exc=True)
+    if repo not in temp_skip_update:
+        runcomm("bash -c 'cd %s && git up'" % repodir, exc=True)
+
+    if rebuild_target:
+        runcomm("rpmdev-bumpspec --rightmost --comment "
+                     "\"Rebuilt for F%s virt-preview repo\" "
+                     "%s/%s.spec" % (fedora_version, repodir, repo),
+                     exc=True)
+
+    out = runcomm("bash -c 'cd %s && fedpkg verrel'" % repodir,
+                       exc=True)
+    return out.strip("\n").splitlines()[-1]
+
+
+def get_versions(fedora_version):
+    """
+    Return dict with repo:verrel mappings
+    """
+    versions = {}
+    repos = os.listdir("repos")
+    for repo in repos:
+        if repo in temp_skip_build:
+            continue
+        versions[repo] = check_verrel(repo, fedora_version)
+
+    # Split .fcXX bit from end of verrel string
+    for repo, verrel in versions.items():
+        if repo in rebuild_target_ver:
+            target = "fc%s" % fedora_version
+        else:
+            target = "fc%s" % (fedora_version + 1)
+
+        if verrel.find(target) == -1:
+            raise RuntimeError("Didn't find %s in verrel %s" %
+                               (target, verrel))
+
+        versions[repo] = verrel[:(verrel.find(target) - 1)]
+
+    return versions
+
+
+def map_rpms_to_verrel(versions, fedora_version):
+    """
+    Try to map every file in rpms/ to a app+verrel combo
+    """
+    rpms = os.listdir(rootdir(fedora_version) + "/fp/rpms")
+    filemap = {}
+
+    for rpm in rpms:
+        for app in reversed(sorted(versions.keys())):
+            verrel = versions[app]
+            filemap[rpm] = None
+            pattern = "%s-.*%s\.fc.*.rpm" % (app,
+                                             verrel.replace(app + "-", ""))
+            if re.match(pattern, rpm):
+                filemap[rpm] = app
+                break
+
+    return filemap
+
+
+def list_of_needed_updates(versions, fedora_version):
+    """
+    Check latest rawhide version for each repo vs. local state
+    of virt-preview packages.
+    """
+    need_update = []
+    filemap = map_rpms_to_verrel(versions, fedora_version)
+
+    for app in versions:
+        if app not in filemap.values():
+            need_update.append(app)
+
+    return need_update
+
+
+def load_package_list():
+    if not os.path.exists(".virtpreview.db"):
+        return {}
+
+    fd = open(".virtpreview.db", "rb")
+    db = pickle.load(fd)
+    fd.close()
+
+    # Make sure no stale packages are in package_list
+    repos = os.listdir("repos")
+    for key in db.keys():
+        if key not in repos:
+            del(db[key])
+
+    return db
+
+
+def save_package_list(db):
+    fd = open(".virtpreview.db", "wb")
+    pickle.dump(db, fd)
+    fd.close()
+
+
+#############################
+# Main functionality blocks #
+#############################
+
+def determine_packages_to_update(versions, skiplist, onlylist,
+                                 fedora_version):
+    """
+    Check what packages need updating from repo state and cli args
+    """
+    need_update = list_of_needed_updates(versions, fedora_version)
+
+    for skip in skiplist:
+        if skip in need_update:
+            print "%s needs update, but explicit skip requested." % skip
+            need_update.remove(skip)
+
+    for need in need_update[:]:
+        if onlylist and need not in onlylist:
+            print ("%s needs update, but wasn't requested with --only" %
+                   need)
+            need_update.remove(need)
+
+    if not need_update:
+        print "Everything is up to date, nothing to build"
+        return 0
+
+    need_update.sort()
+    print
+    print "The following packages need updating:"
+    print
+    for p in need_update:
+        print "* %s" % p
+    print
+
+    delay("Proceeding in 10 seconds, ctrl-c to exit...", 10)
+    return need_update
+
+
+def prep_mock_root(arch, installfirst, fedora_version):
+    mockroot = "fedora-%s-%s" % (fedora_version, arch)
+    def run(cmd, **kwargs):
+        return runcomm("bash -c '%s'" % cmd, exc=True, **kwargs)
+
+    # Init the root, and install and prereq packages
+    run("mock --root %s --init" % mockroot)
+    if installfirst:
+        run("mock --root %s --install %s" % (mockroot, " ".join(installfirst)))
+
+
+def single_mock_build(package, arch, fedora_version):
+    """
+    Build <package> for <arch> using mock. Grab the built RPMs and move
+    them to fp/rpms
+    """
+    repodir = "repos/%s" % package
+    mockroot = "fedora-%s-%s" % (fedora_version, arch)
+    resultdir = "/var/lib/mock/%s/result" % mockroot
+
+    def run(cmd, **kwargs):
+        return runcomm("bash -c '%s'" % cmd, exc=True, **kwargs)
+
+    # Build srpm
+    print "\nBuilding %s-%s:" % (package, arch)
+    run("cd %s && rm -rf *.src.rpm && fedpkg srpm" % repodir)
+    # Build package in mock from srpm
+    run("mock --root %s --no-clean %s/*.src.rpm" % (mockroot, repodir))
+
+    # Move RPMs into place
+    rpms = []
+    for f in os.listdir(resultdir):
+        if not f.endswith(".rpm"):
+            continue
+        if f.endswith(".src.rpm"):
+            continue
+        rpms.append(f)
+        run("mv %s/%s fp/rpms" % (resultdir, f), quiet=True)
+
+    # Clean up root results
+    run("rm -rf %s/*" % resultdir)
+    print "%s-%s done" % (package, arch)
+
+    return rpms
+
+
+def run_mock_builds(buildlist, current_packages, fedora_version):
+    """
+    Pass off each package to mock, receive a list of built and fetched RPMs.
+    Only build once for noarch. Collect all errors and return them to the
+    caller
+    """
+    newpackages = {}
+    installpackages = current_packages.copy()
+
+    for k in installpackages.keys():
+        if k in buildlist:
+            installpackages.pop(k)
+
+    # Make a list of all packages, and a buildorder if
+    allpackages = (installpackages.keys() +
+                   [p for p in buildlist if p not in installpackages.keys()])
+    allpackages.sort()
+    buildorder = ([p for p in allpackages if p not in staticbuildorder] +
+                  [p for p in staticbuildorder if p in allpackages])
+
+    def get_install_list(package, arch):
+        """
+        Build list of already built virt-preview packages to install in
+        chroot. If package == None, install every package we have
+        """
+        ret = []
+        if arch == "i386":
+            arch = "i[3-6]86"
+
+        if package is None:
+            deplist = buildorder[:]
+        else:
+            deplist = buildorder[:buildorder.index(package)]
+
+        doinstall = sum([installpackages[pname] for pname in deplist], [])
+
+        for p in doinstall:
+            if p.count("debuginfo"):
+                continue
+            if re.search("\.%s\." % arch, p) or re.search("\.noarch\.", p):
+                ret.append(p)
+
+        return ["fp/rpms/%s" % p for p in ret]
+
+
+    buildlist = [p for p in buildorder if p in buildlist]
+    for p in buildlist + [None]:
+        # We do a final pass with p == None in which we don't build anything,
+        # but verify that every generated virt-preview packages installs fine
+        installpackages.update(newpackages)
+        if p:
+            newpackages[p] = []
+
+        for arch in ["x86_64", "i386"]:
+            installfirst = get_install_list(p, arch)
+            name = "%s-%s" % (p, arch)
+
+            try:
+                prep_mock_root(arch, installfirst, fedora_version)
+                if p:
+                    newpackages[p] += single_mock_build(p, arch,
+                                                        fedora_version)
+            except:
+                err = ("\n%s build errors:\n%s\n" %
+                       (name, traceback.format_exc()))
+                if p:
+                    newpackages[p] = []
+                raise RuntimeError(err)
+
+            if p is None:
+                continue
+
+            if all([f.endswith(".noarch.rpm") for f in newpackages[p]]):
+                print "%s: all noarch, so skipping rest of arch builds" % name
+                break
+
+    return newpackages
+
+
+def make_repos():
+    """
+    Actually generate repodata
+    """
+    def run(cmd, quiet=True):
+        if sys.stdin.isatty():
+            return shellcomm(cmd)
+        else:
+            return runcomm("bash -c '%s'" % cmd, quiet=quiet)
+
+    print "\nMaking repodata"
+
+    # Remove old links
+    rpmdirs = ["SRPMS", "debuginfo", "i386", "x86_64"]
+    for d in rpmdirs:
+        for f in os.listdir(d):
+            if f in ["repodata", ".repodata"]:
+                run("rm -rf %s/repodata" % d)
+            else:
+                run("unlink %s/%s" % (d, f))
+
+    print
+
+    # Make new ones
+    for f in os.listdir("rpms"):
+        destdir = []
+        if f.count(".noarch"):
+            destdir.append("x86_64")
+            destdir.append("i386")
+        elif f.count(".x86_64"):
+            destdir.append("x86_64")
+        elif f.count(".i686"):
+            destdir.append("i386")
+        elif f.count(".src.rpm"):
+            destdir.append("SRPMS")
+        elif f.count("debuginfo"):
+            destdir.append("debuginfo")
+        else:
+            raise RuntimeError("Where do we link %s to?" % f)
+
+        for d in destdir:
+            run("ln -s ../rpms/%s %s/%s" % (f, d, f))
+
+    print
+
+    # Generate repos
+    for d in rpmdirs:
+        run("cd %s && createrepo ./" % d)
+
+    print "\nFinished building repodata\n"
+
+
+#########################
+# Main and CLI handling #
+#########################
+
+def parse_args():
+    parser = optparse.OptionParser(
+        description="Helper for maintaining virt-preview repo")
+
+    parser.add_option("", "--skip", dest="skip", default=[],
+                      action="append",
+                      help="Don't build for this project")
+    parser.add_option("", "--only", dest="only", default=[],
+                      action="append",
+                      help="Only check specified repos")
+    parser.add_option("", "--skiprepos", dest="skiprepos", default=False,
+                      action="store_true",
+                      help="Skip rpm build stuff")
+    parser.add_option("", "--skipmakerepo", dest="skipmakerepo",
+                      default=False, action="store_true",
+                      help="Skip the make_repo step")
+    parser.add_option("", "--skipupload", dest="skipupload",
+                      default=False, action="store_true",
+                      help="Skip the rsync upload step")
+    parser.add_option("", "--new-version", dest="newversion",
+                      default=None,
+                      help="Create directory tree for new fedora version")
+
+    options, ignore = parser.parse_args()
+    return options
+
+
+def remove_stale_rpms(plist):
+    rmfiles = []
+    for f in os.listdir("fp/rpms"):
+        if f not in plist:
+            rmfiles.append(f)
+
+    if rmfiles:
+        rmfiles.sort()
+        print "\nRemoving the following files:\n"
+        for f in rmfiles:
+            print "* %s" % f
+        print
+        for i in range(len(rmfiles)):
+            rmfiles[i] = "fp/rpms/" + rmfiles[i]
+        runcomm(["rm"] + rmfiles, quiet=True)
+
+
+def app_already_running():
+    pattern = "/usr/bin/python [\w\d/]+/virtpreview"
+    psout = runcomm("ps axwww", quiet=True).splitlines()
+    lines = [x for x in psout if re.search(pattern, x)]
+    if len(lines) > 1:
+        fail("virtpreview already appears to be running?\n%s" % lines)
+
+
+def make_new_dir_tree(fedora_version):
+    """
+    Create directory tree for new fedora instance
+    """
+    root = rootdir(fedora_version)
+
+    os.mkdir(root)
+    os.mkdir(root + "/repos")
+
+    os.mkdir(root + "/fp")
+    rpmdirs = ["SRPMS", "debuginfo", "i386", "x86_64", "rpms"]
+    for d in rpmdirs:
+        os.mkdir(root + "/fp/%s" % d)
+
+    os.chdir(root + "/repos")
+    for repo in default_packages:
+        os.system("fedpkg co -a %s" % repo)
+
+
+def refresh_repo(options, fedora_version):
+    """
+    Main function that wraps up all the logic
+    """
+    version_root = rootdir(fedora_version)
+    os.chdir(version_root)
+
+    current_packages = load_package_list()
+    update_list = []
+    versions = {}
+
+    remove_stale_rpms(sum(current_packages.values(), []))
+
+    if not options.skiprepos:
+        print "Checking repo versions"
+        versions = get_versions(fedora_version)
+        update_list = determine_packages_to_update(versions,
+                                                   options.skip, options.only,
+                                                   fedora_version)
+        if update_list == 0:
+            return
+
+        packagenames = run_mock_builds(update_list, current_packages,
+                                       fedora_version)
+        current_packages.update(packagenames)
+        save_package_list(current_packages)
+
+
+    for repo in os.listdir("repos"):
+        if repo in current_packages:
+            continue
+        if repo in temp_skip_build:
+            continue
+
+        raise RuntimeError("Some repo in repos/ isn't tracked in "
+                           "our current_packages db?")
+
+    # Make repos
+    os.chdir(version_root + "/fp")
+
+    if not options.skipmakerepo:
+        make_repos()
+
+    # Sanity check that things actually worked. Skip if we encountered
+    # any error, since it might invalidate things
+    if update_list:
+        needed = list_of_needed_updates(versions, fedora_version)
+        for repo in needed:
+            if repo not in update_list:
+                continue
+            raise RuntimeError("%s still seems updateable... our detection "
+                               "logic might be busted\n"
+                               "needed=%s\nupdate_list=%s\nversions=%s"
+                               % (repo, needed, update_list, versions))
+
+    if options.skipupload:
+        print "Skipping upload as requested"
+        return
+
+    # Put the RPMs in place
+    prog = (sys.stdin.isatty() and "--progress " or " ")
+    shellcomm("rsync -avz %s --exclude repodata . "
+        "%s@fedorapeople.org:~/virtgroup/virt-preview/fedora-%s" %
+        (prog, hosteduser, fedora_version))
+
+    # Overwrite the repodata and remove stale files
+    shellcomm("rsync -avz %s --delete . "
+        "%s@fedorapeople.org:~/virtgroup/virt-preview/fedora-%s" %
+        (prog, hosteduser, fedora_version))
+
+
+def main():
+    options = parse_args()
+    app_already_running()
+
+    if options.newversion:
+        make_new_dir_tree(options.newversion)
+        return 0
+
+    for ver in fedora_versions:
+        if ver in skip_for_now:
+            continue
+        print
+        print "==========================================="
+        print "Running for Fedora-%s" % ver
+        print "===========================================\n\n"
+        refresh_repo(options, ver)
+
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
