@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
+import argparse
 import getpass
-import optparse
 import os
 import pickle
 import re
@@ -514,30 +514,23 @@ def make_repos():
 #########################
 
 def parse_args():
-    parser = optparse.OptionParser(
+    parser = argparse.ArgumentParser(
         description="Helper for maintaining virt-preview repo")
 
-    parser.add_option("", "--skip", dest="skip", default=[],
-                      action="append",
-                      help="Don't build for this project")
-    parser.add_option("", "--only", dest="only", default=[],
-                      action="append",
-                      help="Only check specified repos")
-    parser.add_option("", "--skiprepos", dest="skiprepos", default=False,
-                      action="store_true",
-                      help="Skip rpm build stuff")
-    parser.add_option("", "--skipmakerepo", dest="skipmakerepo",
-                      default=False, action="store_true",
-                      help="Skip the make_repo step")
-    parser.add_option("", "--skipupload", dest="skipupload",
-                      default=False, action="store_true",
-                      help="Skip the rsync upload step")
-    parser.add_option("", "--new-version", dest="newversion",
-                      default=None,
-                      help="Create directory tree for new fedora version")
+    parser.add_argument("--skip", default=[], action="append",
+        help="Don't build for this project")
+    parser.add_argument("--only", default=[], action="append",
+        help="Only check specified repos")
+    parser.add_argument("--skiprepos", action="store_true",
+        help="Skip rpm build stuff")
+    parser.add_argument("--skipmakerepo", action="store_true",
+        help="Skip the make_repo step")
+    parser.add_argument("--skipupload", action="store_true",
+        help="Skip the rsync upload step")
+    parser.add_argument("--new-version", dest="newversion",
+        help="Create directory tree for new fedora version")
 
-    options, ignore = parser.parse_args()
-    return options
+    return parser.parse_args()
 
 
 def remove_stale_rpms(plist):
