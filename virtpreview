@@ -367,6 +367,8 @@ def single_mock_build(package, arch, fedora_version):
         if not f.endswith(".rpm"):
             continue
         if f.endswith(".src.rpm"):
+            # Don't distribute srpms... it's just the same source as
+            # rawhide, and saves some upload time
             continue
         rpms.append(f)
         run("mv %s/%s public-tree/rpms" % (resultdir, f), quiet=True)
@@ -483,17 +485,17 @@ def make_repos():
     # Make new ones
     for f in os.listdir("rpms"):
         destdir = []
-        if f.count(".noarch"):
+        if f.count("debuginfo"):
+            destdir.append("debuginfo")
+        elif f.count(".src.rpm"):
+            destdir.append("SRPMS")
+        elif f.count(".noarch"):
             destdir.append("x86_64")
             destdir.append("i386")
         elif f.count(".x86_64"):
             destdir.append("x86_64")
         elif f.count(".i686"):
             destdir.append("i386")
-        elif f.count(".src.rpm"):
-            destdir.append("SRPMS")
-        elif f.count("debuginfo"):
-            destdir.append("debuginfo")
         else:
             raise RuntimeError("Where do we link %s to?" % f)
 
