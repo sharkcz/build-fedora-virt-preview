@@ -14,7 +14,7 @@ import traceback
 
 
 hosteduser = os.environ.get("FAS_USERNAME", None) or getpass.getuser()
-rootbase = os.path.expanduser("~/src/fedora/virtpreview")
+rootbase = os.path.expanduser("~/src/fedora/virt-group-repos/virt-preview")
 scriptdir = os.path.dirname(__file__)
 dbbasename = os.path.join(scriptdir, ".virtpreview.db")
 
@@ -73,7 +73,7 @@ temp_skip_build = []
 
 # This is the default list of packages we distribute with every
 # virt-preview version. More repos can be added as a one off by doing
-# 'fedpkg co' in the relevant repos/ directory.
+# 'fedpkg co' in the relevant fedpkg-repos/ directory.
 default_packages = [
     "ipxe",
     "libvirt",
@@ -179,11 +179,11 @@ def runcomm(comm, **kwargs):
 ####################
 
 def rootdir(version):
-    return os.path.join(rootbase, str(version))
+    return os.path.join(rootbase, "fedora-" + str(version))
 
 
 def check_verrel(repo, fedora_version):
-    repodir = "repos/" + repo
+    repodir = "fedpkg-repos/" + repo
     rebuild_target = repo in rebuild_target_ver
     if rebuild_target:
         branch = "f%s"
@@ -214,7 +214,7 @@ def get_versions(fedora_version):
     Return dict with repo:verrel mappings
     """
     versions = {}
-    repos = os.listdir("repos")
+    repos = os.listdir("fedpkg-repos")
     for repo in repos:
         if repo in temp_skip_build:
             continue
@@ -240,7 +240,7 @@ def map_rpms_to_verrel(versions, fedora_version):
     """
     Try to map every file in rpms/ to a app+verrel combo
     """
-    rpms = os.listdir(rootdir(fedora_version) + "/fp/rpms")
+    rpms = os.listdir(rootdir(fedora_version) + "/public-tree/rpms")
     filemap = {}
 
     for rpm in rpms:
@@ -280,7 +280,7 @@ def load_package_list():
     fd.close()
 
     # Make sure no stale packages are in package_list
-    repos = os.listdir("repos")
+    repos = os.listdir("fedpkg-repos")
     for key in db.keys():
         if key not in repos:
             del(db[key])
@@ -346,9 +346,9 @@ def prep_mock_root(arch, installfirst, fedora_version):
 def single_mock_build(package, arch, fedora_version):
     """
     Build <package> for <arch> using mock. Grab the built RPMs and move
-    them to fp/rpms
+    them to public-tree/rpms
     """
-    repodir = "repos/%s" % package
+    repodir = "fedpkg-repos/%s" % package
     mockroot = "fedora-%s-%s" % (fedora_version, arch)
     resultdir = "/var/lib/mock/%s/result" % mockroot
 
@@ -369,7 +369,7 @@ def single_mock_build(package, arch, fedora_version):
         if f.endswith(".src.rpm"):
             continue
         rpms.append(f)
-        run("mv %s/%s fp/rpms" % (resultdir, f), quiet=True)
+        run("mv %s/%s public-tree/rpms" % (resultdir, f), quiet=True)
 
     # Clean up root results
     run("rm -rf %s/*" % resultdir)
@@ -420,7 +420,7 @@ def run_mock_builds(buildlist, current_packages, fedora_version):
             if re.search("\.%s\." % arch, p) or re.search("\.noarch\.", p):
                 ret.append(p)
 
-        return ["fp/rpms/%s" % p for p in ret]
+        return ["public-tree/rpms/%s" % p for p in ret]
 
 
     buildlist = [p for p in buildorder if p in buildlist]
@@ -535,7 +535,7 @@ def parse_args():
 
 def remove_stale_rpms(plist):
     rmfiles = []
-    for f in os.listdir("fp/rpms"):
+    for f in os.listdir("public-tree/rpms"):
         if f not in plist:
             rmfiles.append(f)
 
@@ -546,7 +546,7 @@ def remove_stale_rpms(plist):
             print "* %s" % f
         print
         for i in range(len(rmfiles)):
-            rmfiles[i] = "fp/rpms/" + rmfiles[i]
+            rmfiles[i] = "public-tree/rpms/" + rmfiles[i]
         runcomm(["rm"] + rmfiles, quiet=True)
 
 
@@ -565,14 +565,14 @@ def make_new_dir_tree(fedora_version):
     root = rootdir(fedora_version)
 
     os.mkdir(root)
-    os.mkdir(root + "/repos")
+    os.mkdir(root + "/fedpkg-repos")
 
-    os.mkdir(root + "/fp")
+    os.mkdir(root + "/public-tree")
     rpmdirs = ["SRPMS", "debuginfo", "i386", "x86_64", "rpms"]
     for d in rpmdirs:
-        os.mkdir(root + "/fp/%s" % d)
+        os.mkdir(root + "/public-tree/%s" % d)
 
-    os.chdir(root + "/repos")
+    os.chdir(root + "/fedpkg-repos")
     for repo in default_packages:
         os.system("fedpkg co -a %s" % repo)
 
@@ -605,17 +605,17 @@ def refresh_repo(options, fedora_version):
         save_package_list(current_packages)
 
 
-    for repo in os.listdir("repos"):
+    for repo in os.listdir("fedpkg-repos"):
         if repo in current_packages:
             continue
         if repo in temp_skip_build:
             continue
 
-        raise RuntimeError("Some repo in repos/ isn't tracked in "
+        raise RuntimeError("Some repo in fedpkg-repos/ isn't tracked in "
                            "our current_packages db?")
 
     # Make repos
-    os.chdir(version_root + "/fp")
+    os.chdir(version_root + "/public-tree")
 
     if not options.skipmakerepo:
         make_repos()
