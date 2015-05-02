@@ -1,4 +1,5 @@
-# Place this file in your /etc/yum.repos.d/ directory
+# Fedora Virt preview repository
+# Details: https://fedoraproject.org/wiki/Virtualization_Preview_Repository
 
 [fedora-virt-preview]
 name=Virtualization packages from Rawhide built for latest Fedora
