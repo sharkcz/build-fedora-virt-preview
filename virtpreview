@@ -26,6 +26,9 @@ dbbasename = os.path.join(scriptdir, ".virtpreview.db")
 fedora_versions = [21, 22]
 rawhide_ver = fedora_versions[-1] + 1
 
+# What archs to build for
+BUILD_ARCHS = ["x86_64"]
+
 # Skip building this fedora version for now, useful after new fedora is
 # branched but before it is composed
 skip_for_now = []
@@ -433,7 +436,7 @@ def run_mock_builds(buildlist, current_packages, fedora_version):
         if p:
             newpackages[p] = []
 
-        for arch in ["x86_64", "i386"]:
+        for arch in BUILD_ARCHS:
             installfirst = get_install_list(p, arch)
             name = "%s-%s" % (p, arch)
 
