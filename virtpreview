@@ -616,11 +616,10 @@ def refresh_repo(options, fedora_version):
         raise RuntimeError("Some repo in fedpkg-repos/ isn't tracked in "
                            "our current_packages db?")
 
+    remove_stale_rpms(sum(current_packages.values(), []))
+
     # Make repos
     os.chdir(version_root + "/public-tree")
-
-    if not options.skipmakerepo:
-        make_repos()
 
     # Sanity check that things actually worked. Skip if we encountered
     # any error, since it might invalidate things
@@ -633,6 +632,9 @@ def refresh_repo(options, fedora_version):
                                "logic might be busted\n"
                                "needed=%s\nupdate_list=%s\nversions=%s"
                                % (repo, needed, update_list, versions))
+
+    if not options.skipmakerepo:
+        make_repos()
 
     if options.skipupload:
         print "Skipping upload as requested"
