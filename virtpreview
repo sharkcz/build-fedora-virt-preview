@@ -46,6 +46,7 @@ staticbuildorder = [
     "vinagre",
     "qemu",
     "libvirt",
+    "libvirt-glib",
     "libvirt-python",
     "libvirt-sandbox",
     "libosinfo",
