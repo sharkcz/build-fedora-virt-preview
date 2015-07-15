@@ -580,7 +580,7 @@ def make_new_dir_tree(fedora_version):
 
     os.chdir(root + "/fedpkg-repos")
     for repo in default_packages:
-        os.system("fedpkg co -a %s" % repo)
+        os.system("fedpkg co %s" % repo)
 
 
 def refresh_repo(options, fedora_version):
