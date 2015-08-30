@@ -510,7 +510,7 @@ def make_repos():
 
     # Generate repos
     for d in rpmdirs:
-        run("cd %s && createrepo ./" % d)
+        run("cd %s && createrepo_c ./" % d)
 
     print "\nFinished building repodata\n"
 
