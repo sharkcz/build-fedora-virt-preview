@@ -44,6 +44,7 @@ staticbuildorder = [
     "spice-gtk",
     "spice",
     "vinagre",
+    "libcacard",
     "qemu",
     "libvirt",
     "libvirt-glib",
@@ -80,6 +81,7 @@ temp_skip_build = []
 # 'fedpkg co' in the relevant fedpkg-repos/ directory.
 default_packages = [
     "ipxe",
+    "libcacard",
     "libvirt",
     "libvirt-python",
     "libvirt-sandbox",
