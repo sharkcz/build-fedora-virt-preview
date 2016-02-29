@@ -2,7 +2,7 @@
 # Details: https://fedoraproject.org/wiki/Virtualization_Preview_Repository
 
 [fedora-virt-preview]
-name=Virtualization packages from Rawhide built for latest Fedora
+name=Virtualization latest releases
 baseurl=http://fedorapeople.org/groups/virt/virt-preview/fedora-$releasever/$basearch
 enabled=1
 skip_if_unavailable=1
@@ -10,14 +10,14 @@ gpgcheck=0
 
 [fedora-virt-preview-debuginfo]
 name=Fedora $releasever - $basearch - Debug
-name=Virtualization packages from Rawhide built for latest Fedora - Debug
+name=Virtualization latest releases - Debug
 baseurl=http://fedorapeople.org/groups/virt/virt-preview/fedora-$releasever/debuginfo
 enabled=0
 skip_if_unavailable=1
 gpgcheck=0
 
 [fedora-virt-preview-source]
-name=Virtualization packages from Rawhide built for latest Fedora - Source
+name=Virtualization latest releases - Source
 baseurl=http://fedorapeople.org/groups/virt/virt-preview/fedora-$releasever/SRPMS
 enabled=0
 skip_if_unavailable=1
