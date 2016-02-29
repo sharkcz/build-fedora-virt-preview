@@ -23,7 +23,7 @@ dbbasename = os.path.join(scriptdir, ".virtpreview.db")
 #   and it will create the necessary directory tree
 #
 # When you tweak this, you should send a mail to virt@fedora
-fedora_versions = [23]
+fedora_versions = [23, 24]
 rawhide_ver = fedora_versions[-1] + 1
 
 # What archs to build for
