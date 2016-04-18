@@ -553,8 +553,8 @@ def remove_stale_rpms(plist):
         for f in rmfiles:
             print "* %s" % f
         print
-        for i in range(len(rmfiles)):
-            rmfiles[i] = "public-tree/rpms/" + rmfiles[i]
+        for idx, f in enumerate(rmfiles):
+            rmfiles[idx] = "public-tree/rpms/" + f
         runcomm(["rm"] + rmfiles, quiet=True)
 
 
