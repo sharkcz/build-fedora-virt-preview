@@ -72,9 +72,19 @@ rebuild_target_ver = [
 temp_skip_update = [
 ]
 
+
 # Temporarilly skip building these repos. Can be used if there's a
 # a temporary build issue or similar.
 temp_skip_build = []
+
+
+# Don't try to install these subpackages, for specified reasons
+skip_subpackage_install = [
+    # Intentionally conflicts with qemu-user-binfmt, so we can only
+    # install one of them
+    "qemu-user-static",
+]
+
 
 # This is the default list of packages we distribute with every
 # virt-preview version. More repos can be added as a one off by doing
@@ -421,6 +431,8 @@ def run_mock_builds(buildlist, current_packages, fedora_version):
             deplist = buildorder[:buildorder.index(package)]
 
         doinstall = sum([installpackages[pname] for pname in deplist], [])
+        for prefix in skip_subpackage_install:
+            doinstall = [p for p in doinstall if not p.startswith(prefix)]
 
         for p in doinstall:
             if p.count("debuginfo"):
