@@ -380,10 +380,6 @@ def single_mock_build(package, arch, fedora_version):
     for f in os.listdir(resultdir):
         if not f.endswith(".rpm"):
             continue
-        if f.endswith(".src.rpm"):
-            # Don't distribute srpms... it's just the same source as
-            # rawhide, and saves some upload time
-            continue
         rpms.append(f)
         run("mv %s/%s public-tree/rpms" % (resultdir, f), quiet=True)
 
