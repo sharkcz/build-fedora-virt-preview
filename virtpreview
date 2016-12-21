@@ -420,9 +420,6 @@ def run_mock_builds(buildlist, current_packages, fedora_version):
         chroot. If package == None, install every package we have
         """
         ret = []
-        if arch == "i386":
-            arch = "i[3-6]86"
-
         if package is None:
             deplist = buildorder[:]
         else:
@@ -488,7 +485,7 @@ def make_repos():
     print "\nMaking repodata"
 
     # Remove old links
-    rpmdirs = ["SRPMS", "debuginfo", "i386", "x86_64"]
+    rpmdirs = ["SRPMS", "debuginfo", "x86_64"]
     for d in rpmdirs:
         for f in os.listdir(d):
             if f in ["repodata", ".repodata"]:
@@ -507,11 +504,8 @@ def make_repos():
             destdir.append("SRPMS")
         elif f.count(".noarch"):
             destdir.append("x86_64")
-            destdir.append("i386")
         elif f.count(".x86_64"):
             destdir.append("x86_64")
-        elif f.count(".i686"):
-            destdir.append("i386")
         else:
             raise RuntimeError("Where do we link %s to?" % f)
 
@@ -586,7 +580,7 @@ def make_new_dir_tree(fedora_version):
     os.mkdir(root + "/fedpkg-repos")
 
     os.mkdir(root + "/public-tree")
-    rpmdirs = ["SRPMS", "debuginfo", "i386", "x86_64", "rpms"]
+    rpmdirs = ["SRPMS", "debuginfo", "x86_64", "rpms"]
     for d in rpmdirs:
         os.mkdir(root + "/public-tree/%s" % d)
 
