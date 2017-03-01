@@ -88,6 +88,7 @@ skip_subpackage_install = [
 # virt-preview version. More repos can be added as a one off by doing
 # 'fedpkg co' in the relevant fedpkg-repos/ directory.
 default_packages = [
+    "edk2",
     "ipxe",
     "libcacard",
     "libvirt",
