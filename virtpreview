@@ -344,6 +344,7 @@ def determine_packages_to_update(versions, skiplist, onlylist,
     print
 
     delay("Proceeding in 10 seconds, ctrl-c to exit...", 10)
+    print
     return need_update
 
 
