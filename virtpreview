@@ -230,7 +230,7 @@ def get_versions(fedora_version):
     """
     versions = {}
     repos = os.listdir("fedpkg-repos")
-    for repo in repos:
+    for repo in sorted(repos):
         if repo in temp_skip_build:
             continue
         versions[repo] = check_verrel(repo, fedora_version)
