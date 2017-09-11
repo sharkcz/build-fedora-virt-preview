@@ -29,7 +29,7 @@ BUILD_ARCHS = ["x86_64"]
 
 # Skip building this fedora version for now, useful after new fedora is
 # branched but before it is composed
-skip_for_now = []
+temp_skip_fedora_version = []
 
 # If a package is in this list, build it in the order it's listed, but
 # only AFTER every package that _isn't_ in this list. So we can stick
@@ -669,7 +669,8 @@ def main():
         return 0
 
     for ver in fedora_versions:
-        if ver in skip_for_now:
+        if ver in temp_skip_fedora_version:
+            print "ver=%s in temp_skip_fedora_version, so skipping" % ver
             continue
         print
         print "==========================================="
