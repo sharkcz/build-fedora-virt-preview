@@ -224,19 +224,19 @@ def check_verrel(repo, fedora_version):
     return out.strip("\n").splitlines()[-1]
 
 
-def get_versions(fedora_version):
+def get_verrels(fedora_version):
     """
     Return dict with repo:verrel mappings
     """
-    versions = {}
+    verrels = {}
     repos = os.listdir("fedpkg-repos")
     for repo in sorted(repos):
         if repo in temp_skip_build:
             continue
-        versions[repo] = check_verrel(repo, fedora_version)
+        verrels[repo] = check_verrel(repo, fedora_version)
 
     # Split .fcXX bit from end of verrel string
-    for repo, verrel in versions.items():
+    for repo, verrel in verrels.items():
         if repo in rebuild_target_ver:
             target = "fc%s" % fedora_version
         else:
@@ -246,12 +246,12 @@ def get_versions(fedora_version):
             raise RuntimeError("Didn't find %s in verrel %s" %
                                (target, verrel))
 
-        versions[repo] = verrel[:(verrel.find(target) - 1)]
+        verrels[repo] = verrel[:(verrel.find(target) - 1)]
 
-    return versions
+    return verrels
 
 
-def map_rpms_to_verrel(versions, fedora_version):
+def map_rpms_to_verrel(verrels, fedora_version):
     """
     Try to map every file in rpms/ to a app+verrel combo
     """
@@ -259,8 +259,8 @@ def map_rpms_to_verrel(versions, fedora_version):
     filemap = {}
 
     for rpm in rpms:
-        for app in reversed(sorted(versions.keys())):
-            verrel = versions[app]
+        for app in reversed(sorted(verrels.keys())):
+            verrel = verrels[app]
             filemap[rpm] = None
             pattern = "%s-.*%s\.fc.*.rpm" % (app,
                                              verrel.replace(app + "-", ""))
@@ -271,15 +271,15 @@ def map_rpms_to_verrel(versions, fedora_version):
     return filemap
 
 
-def list_of_needed_updates(versions, fedora_version):
+def list_of_needed_updates(verrels, fedora_version):
     """
     Check latest rawhide version for each repo vs. local state
     of virt-preview packages.
     """
     need_update = []
-    filemap = map_rpms_to_verrel(versions, fedora_version)
+    filemap = map_rpms_to_verrel(verrels, fedora_version)
 
-    for app in versions:
+    for app in verrels:
         if app not in filemap.values():
             need_update.append(app)
 
@@ -313,12 +313,12 @@ def save_package_list(db):
 # Main functionality blocks #
 #############################
 
-def determine_packages_to_update(versions, skiplist, onlylist,
+def determine_packages_to_update(verrels, skiplist, onlylist,
                                  fedora_version):
     """
     Check what packages need updating from repo state and cli args
     """
-    need_update = list_of_needed_updates(versions, fedora_version)
+    need_update = list_of_needed_updates(verrels, fedora_version)
 
     for skip in skiplist:
         if skip in need_update:
@@ -596,14 +596,14 @@ def refresh_repo(options, fedora_version):
 
     current_packages = load_package_list()
     update_list = []
-    versions = {}
+    verrels = {}
 
     remove_stale_rpms(sum(current_packages.values(), []))
 
     if not options.skiprepos:
-        print "Checking repo versions"
-        versions = get_versions(fedora_version)
-        update_list = determine_packages_to_update(versions,
+        print "Checking repo verrels"
+        verrels = get_verrels(fedora_version)
+        update_list = determine_packages_to_update(verrels,
                                                    options.skip, options.only,
                                                    fedora_version)
         if update_list == 0:
@@ -632,14 +632,14 @@ def refresh_repo(options, fedora_version):
     # Sanity check that things actually worked. Skip if we encountered
     # any error, since it might invalidate things
     if update_list:
-        needed = list_of_needed_updates(versions, fedora_version)
+        needed = list_of_needed_updates(verrels, fedora_version)
         for repo in needed:
             if repo not in update_list:
                 continue
             raise RuntimeError("%s still seems updateable... our detection "
                                "logic might be busted\n"
-                               "needed=%s\nupdate_list=%s\nversions=%s"
-                               % (repo, needed, update_list, versions))
+                               "needed=%s\nupdate_list=%s\nverrels=%s"
+                               % (repo, needed, update_list, verrels))
 
     if not options.skipmakerepo:
         make_repos()
