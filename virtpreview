@@ -20,7 +20,7 @@ scriptdir = os.path.dirname(__file__)
 # Fedora versions we target
 #   To add a new version here, do virtpreview --new-version <version-number>
 #   and it will create the necessary directory tree
-fedora_versions = [26, 27]
+fedora_versions = [27]
 rawhide_ver = fedora_versions[-1] + 1
 
 # Skip building this fedora version for now, useful after new fedora is
