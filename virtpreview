@@ -70,7 +70,6 @@ temp_skip_update = [
 # Temporarilly skip building these repos. Can be used if there's a
 # a temporary build issue or similar.
 temp_skip_build = [
-    "ipxe",  # build broken on f27
     "libvirt-sandbox",  # some dep issue?
 ]
 
