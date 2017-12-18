@@ -70,7 +70,6 @@ temp_skip_update = [
 # Temporarilly skip building these repos. Can be used if there's a
 # a temporary build issue or similar.
 temp_skip_build = [
-    "libvirt-sandbox",  # some dep issue?
 ]
 
 
@@ -91,7 +90,6 @@ default_packages = [
     "libcacard",
     "libvirt",
     "libvirt-python",
-    "libvirt-sandbox",
     "openbios",
     "qemu",
     "seabios",
