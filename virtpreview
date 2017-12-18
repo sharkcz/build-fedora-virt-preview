@@ -87,7 +87,6 @@ skip_subpackage_install = [
 default_packages = [
     "edk2",
     "ipxe",
-    "libcacard",
     "libvirt",
     "libvirt-python",
     "openbios",
