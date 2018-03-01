@@ -21,7 +21,7 @@ scriptdir = os.path.dirname(__file__)
 #   To add a new version here, do virtpreview --new-version <version-number>
 #   and it will create the necessary directory tree
 fedora_versions = [27]
-rawhide_ver = fedora_versions[-1] + 1
+rawhide_ver = fedora_versions[-1] + 2
 
 # Skip building this fedora version for now, useful after new fedora is
 # branched but before it is composed
@@ -31,7 +31,7 @@ temp_skip_fedora_version = []
 # only AFTER every package that _isn't_ in this list. So we can stick
 # qemu at the end which generally deps on everything else
 staticbuildorder = [
-    "edk2",
+#    "edk2",
     "ipxe",
     "qemu",
     "libvirt",
@@ -75,7 +75,7 @@ skip_subpackage_install = [
 # virt-preview version. More repos can be added as a one off by doing
 # 'fedpkg co' in the relevant fedpkg-repos/ directory.
 default_packages = [
-    "edk2",
+#    "edk2",	## x86 + aarch
     "ipxe",
     "libvirt",
     "libvirt-python",
@@ -288,7 +288,7 @@ def determine_packages_to_update(verrels, skiplist, onlylist):
 
 
 def prep_mock_root(installfirst, fedora_version):
-    mockroot = "fedora-%s-x86_64" % fedora_version
+    mockroot = "fedora-%s-%s" % (fedora_version, options.arch)
     def run(cmd, **kwargs):
         return runcomm("bash -c '%s'" % cmd, exc=True, **kwargs)
 
@@ -302,11 +302,11 @@ def prep_mock_root(installfirst, fedora_version):
 
 def single_mock_build(package, fedora_version, outputdir):
     """
-    Build <package> for x86_64 using mock. Grab the built RPMs and move
+    Build <package> for $arch using mock. Grab the built RPMs and move
     them to public-tree/rpms
     """
     repodir = "fedpkg-repos/%s" % package
-    mockroot = "fedora-%s-x86_64" % fedora_version
+    mockroot = "fedora-%s-%s" % (fedora_version, options.arch)
     resultdir = "/var/lib/mock/%s/result" % mockroot
 
     def run(cmd, **kwargs):
@@ -446,16 +446,16 @@ def make_repos():
             return "debuginfo"
         if filename.endswith(".src.rpm"):
             return "SRPMS"
-        if (filename.endswith(".x86_64.rpm") or
+        if (filename.endswith(".%s.rpm" % options.arch) or
             filename.endswith(".noarch.rpm")):
-            return "x86_64"
+            return options.arch
         raise RuntimeError("Where do we link %s to?" % filename)
 
 
     print "\nMaking repodata"
 
     # Remove old links
-    rpmdirs = ["SRPMS", "debuginfo", "x86_64"]
+    rpmdirs = ["SRPMS", "debuginfo", options.arch]
     for d in rpmdirs:
         for f in os.listdir(d):
             if f in ["repodata", ".repodata"]:
@@ -488,6 +488,8 @@ def parse_args():
     parser = argparse.ArgumentParser(
         description="Helper for maintaining virt-preview repo")
 
+    parser.add_argument("--arch", default='x86_64', choices=['x86_64', 'aarch64', 'ppc64le', 's390x'],
+        help="Architecture")
     parser.add_argument("--skip", default=[], action="append",
         help="Don't build for this project")
     parser.add_argument("--only", default=[], action="append",
@@ -514,7 +516,7 @@ def make_new_dir_tree(fedora_version):
     os.mkdir(root + "/fedpkg-repos")
 
     os.mkdir(root + "/public-tree")
-    rpmdirs = ["SRPMS", "debuginfo", "x86_64", "builds"]
+    rpmdirs = ["SRPMS", "debuginfo", options.arch, "builds"]
     for d in rpmdirs:
         os.mkdir(root + "/public-tree/%s" % d)
 
@@ -560,8 +562,9 @@ def refresh_repo(options, fedora_version):
         (prog, hosteduser, fedora_version))
 
 
+options = parse_args()
+
 def main():
-    options = parse_args()
 
     if options.newversion:
         make_new_dir_tree(options.newversion)
